@@ -1,5 +1,7 @@
 import numpy as np
+import pandas as pd
 import copy
+import math
 
 class BMSParser:
     def __init__(self):
@@ -9,6 +11,9 @@ class BMSParser:
     
     def fileOpen(self,fileroute:str): # bms 파일을 연다
         self.bmsFile = open(fileroute, "rt", encoding='UTF-8')
+    
+    def fileClose(self): # bms 파일을 닫는다.
+        self.bmsFile.close()
 
     def offsetInit(self): # main data field 까지 파일 오프셋을 밀어버린다.
         self.bmsFile.seek(0)
@@ -38,6 +43,7 @@ class BMSParser:
             curTxt = self.bmsFile.readline()
         
         curBar.setMaxBeat(maxBeat)# max 비트 설정 
+        curBar.adjustMaxBeat() # 현재 마디의 Max 비트 퀀타이즈
 
         for i in range(len(curBar.noteLaneSeq)): # 전체레인 퀀타이즈
             curBar.noteLaneSeq[i].quantize(maxBeat)
@@ -52,7 +58,7 @@ class BMSParser:
         while(self.readOneBar()==0):
             continue
 
-    def to_numpy(self)->np.ndarray:
+    def to_numpy(self)->np.ndarray: # 넘파이 배열로 변환
         tmp_bars = copy.deepcopy(self.noteBars)
         bar_list = []
         for bar in tmp_bars:
@@ -62,12 +68,30 @@ class BMSParser:
                     lane.quantize(self.maxBeatOfNoteBars)
                 lane_list.append(lane.data)
             bar_list.append(lane_list)
-        numpy_pattern = np.array(bar_list) 
+        numpy_pattern = np.array(bar_list).transpose(0,2,1) 
         return numpy_pattern
     
+    def to_ndarray_list(self)->list(np.ndarray): #퀀타이즈 없는 ndarr 리스트 데이터 리턴
+        ndarr_list_pattern = []
+        for bar in self.noteBars:
+            lane_list = []
+            for lane in bar.noteLaneSeq:
+                lane_list.append(lane.data)
+            ndarr_list_pattern.append(np.array(lane_list).transpose(1,0))
+        return ndarr_list_pattern
+    
 
-    def fileClose(self):
-        self.bmsFile.close()
+    # def test_numpy(self):
+    #     arr=self.to_numpy()
+    #     f=open( "t.txt", "+wt")
+    #     print(arr)
+    #     for bar in arr:
+    #         for p in bar:
+    #             f.writelines(" ".join(p))
+    #             f.write('\n')
+    #         f.write('\n') 
+    #     f.close()
+
         
                 
                           
@@ -82,7 +106,7 @@ class NoteLane: # 한개의 레인을 저장하는 레인객체
         
 
     def quantize(self, targetBeat:int): #다른 레인과의 비트수를 맞춰주는 함수
-        multiple = targetBeat//self.beat 
+        multiple = targetBeat//self.beat
         if (multiple >= 1):
             newData = ["00"]*targetBeat
             for i in range(len(self.data)):
@@ -100,17 +124,29 @@ class NoteLane: # 한개의 레인을 저장하는 레인객체
 
 
 
-class NoteBar:
+class NoteBar: #레인객체의 시퀀스를 저장하는 객체(마디를 표현)
     def __init__(self, barNum:int):
         self.barNum = barNum
         self.maximumBeat = 0 
         self.noteLaneSeq = [None]*8
         for i in range(8):
             self.noteLaneSeq[i] = NoteLane("00",i) # 디펄트로는 빈 노트레인을 생성
+
     def insertLane(self, lane:NoteLane):
         self.noteLaneSeq[lane.laneNum] = lane
+
     def setMaxBeat(self,maxBeat:int):
         self.maximumBeat = maxBeat
+
+    def adjustMaxBeat(self): # 레인별로 다른 비트 소스를 가져갈경우 (4비트 3비트 )
+        initialMaxBeat = self.maximumBeat
+        for lane in self.noteLaneSeq:
+            isDifferentBeatSource = initialMaxBeat % lane.beat
+            if(isDifferentBeatSource > 0):
+                initialMaxBeat = math.lcm(initialMaxBeat, lane.beat) #최소 공배수를 구해서, 새로운 맥시멈 비트를 구함
+        self.maximumBeat = initialMaxBeat #모든 라인에 대해서 구했을 경우 조정.
+        
+                
         
         
 
