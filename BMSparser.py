@@ -1,9 +1,11 @@
+import numpy as np
+import copy
 
 class BMSParser:
     def __init__(self):
-        self.noteBars:list(NoteBar) = []
+        self.noteBars = []
         self.numOfBars = 0
-
+        self.maxBeatOfNoteBars = 0
     
     def fileOpen(self,fileroute:str): # bms 파일을 연다
         self.bmsFile = open(fileroute, "rt", encoding='UTF-8')
@@ -42,11 +44,27 @@ class BMSParser:
         
         self.noteBars.append(curBar) # 한 마디에 대해서 다읽었으면 마디 집합에 대해서 추가한다.
         self.numOfBars += 1
+        if(self.maxBeatOfNoteBars < curBar.maximumBeat):
+            self.maxBeatOfNoteBars = curBar.maximumBeat
         return 0 # 정상종료
     
     def readWholeBar(self): # 모든 마디를 다 읽어낸다. 
         while(self.readOneBar()==0):
             continue
+
+    def to_numpy(self)->np.ndarray:
+        tmp_bars = copy.deepcopy(self.noteBars)
+        bar_list = []
+        for bar in tmp_bars:
+            lane_list = []
+            for lane in bar.noteLaneSeq:
+                if(bar.maximumBeat < self.maxBeatOfNoteBars):  # 넘파이 배열을 위해 Re-Quantize 
+                    lane.quantize(self.maxBeatOfNoteBars)
+                lane_list.append(lane.data)
+            bar_list.append(lane_list)
+        numpy_pattern = np.array(bar_list) 
+        return numpy_pattern
+    
 
     def fileClose(self):
         self.bmsFile.close()
@@ -64,19 +82,11 @@ class NoteLane: # 한개의 레인을 저장하는 레인객체
         
 
     def quantize(self, targetBeat:int): #다른 레인과의 비트수를 맞춰주는 함수
-
-        print("targetBeat" , targetBeat)
-        print("currentBeat", self.beat)
-        print()
-
         multiple = targetBeat//self.beat 
-
         if (multiple >= 1):
             newData = ["00"]*targetBeat
             for i in range(len(self.data)):
                 newData[i*multiple] = self.data[i]
-            print("newData",newData)
-            print()
             self.beat = targetBeat
             self.data = newData
     
@@ -93,7 +103,7 @@ class NoteLane: # 한개의 레인을 저장하는 레인객체
 class NoteBar:
     def __init__(self, barNum:int):
         self.barNum = barNum
-        self.maximumBeat = 0
+        self.maximumBeat = 0 
         self.noteLaneSeq = [None]*8
         for i in range(8):
             self.noteLaneSeq[i] = NoteLane("00",i) # 디펄트로는 빈 노트레인을 생성
